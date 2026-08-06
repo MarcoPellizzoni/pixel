@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Cache degli strumenti di sviluppo
+.pytest_cache/
+.ruff_cache/
+
+# Immagini prodotte dall'elaborazione: si rigenerano con `uv run gatto`
+output/

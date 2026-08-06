@@ -1,0 +1,58 @@
+[project]
+name = "gatto"
+version = "0.1.0"
+description = "Trasforma la foto di un gatto in un disegno a penna in bianco e nero."
+readme = "README.md"
+authors = [
+    { name = "MarcoPellizzoni", email = "marcopellizzoni@msn.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    # Rimozione dello sfondo tramite reti neurali di segmentazione (U^2-Net / IS-Net).
+    "rembg[cpu]>=2.0.77",
+    # `pymatting`, usato da rembg per l'alpha matting, richiede una versione di
+    # numba compatibile con Python 3.12+.
+    "numba>=0.61",
+    # Algoritmi di elaborazione: filtro bilaterale, gaussiane, CLAHE, mediano.
+    "opencv-python-headless>=5.0.0.93",
+    # Lettura/scrittura dei file immagine e gestione dell'orientamento EXIF.
+    "pillow>=12.3.0",
+    # Rappresentazione e calcolo vettoriale su matrici di pixel.
+    "numpy>=2.4.6",
+    # Interfaccia a riga di comando.
+    "typer>=0.27.1",
+]
+
+[project.scripts]
+# Installa il comando `gatto` nell'ambiente virtuale.
+gatto = "gatto.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.29,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Controlli attivi: errori pycodestyle (E), pyflakes (F), import ordinati (I),
+# convenzioni di naming (N), docstring mancanti (D), aggiornamenti sintassi (UP).
+select = ["E", "F", "I", "N", "D", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# Nei test il nome del metodo descrive gia' il comportamento verificato:
+# imporre anche una docstring aggiungerebbe solo rumore.
+"tests/**" = ["D102", "D103"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

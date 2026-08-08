@@ -1,34 +1,39 @@
 [project]
-name = "gatto"
-version = "0.1.0"
-description = "Trasforma la foto di un gatto in un disegno a penna in bianco e nero."
+name = "pixel"
+version = "0.2.0"
+description = "Composable, step-based image processing with a pipe-style pipeline."
 readme = "README.md"
 authors = [
     { name = "MarcoPellizzoni", email = "marcopellizzoni@msn.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    # Rimozione dello sfondo tramite reti neurali di segmentazione (U^2-Net / IS-Net).
+    # Background removal via segmentation neural networks (U^2-Net / IS-Net).
     "rembg[cpu]>=2.0.77",
-    # `pymatting`, usato da rembg per l'alpha matting, richiede una versione di
-    # numba compatibile con Python 3.12+.
+    # `pymatting`, used by rembg for alpha matting, needs a version of numba
+    # compatible with Python 3.12+.
     "numba>=0.61",
-    # Algoritmi di elaborazione: filtro bilaterale, gaussiane, CLAHE, mediano.
+    # Processing algorithms: bilateral filter, Gaussians, CLAHE, median.
     "opencv-python-headless>=5.0.0.93",
-    # Lettura/scrittura dei file immagine e gestione dell'orientamento EXIF.
+    # Reading/writing image files and handling EXIF orientation.
     "pillow>=12.3.0",
-    # Rappresentazione e calcolo vettoriale su matrici di pixel.
+    # Representation and vectorised computation over pixel matrices.
     "numpy>=2.4.6",
-    # Interfaccia a riga di comando.
+    # Command-line interface.
     "typer>=0.27.1",
+    "flet[desktop,web]>=0.86.5",
 ]
 
 [project.scripts]
-# Installa il comando `gatto` nell'ambiente virtuale.
-gatto = "gatto.cli:main"
+# Installs the `pixel` command into the virtual environment.
+pixel = "pixel.cli:main"
+# Installs the `pixel-editor` command, which opens the graphical editor.
+pixel-editor = "pixel.ui.launcher:run"
 
 [dependency-groups]
 dev = [
+    "nodejs-wheel-binaries>=24.16.0",
+    "pyright>=1.1.411",
     "pytest>=8.0",
     "ruff>=0.9",
 ]
@@ -42,17 +47,40 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-# Controlli attivi: errori pycodestyle (E), pyflakes (F), import ordinati (I),
-# convenzioni di naming (N), docstring mancanti (D), aggiornamenti sintassi (UP).
+# Active checks: pycodestyle errors (E), pyflakes (F), import sorting (I),
+# naming conventions (N), missing docstrings (D), syntax upgrades (UP).
 select = ["E", "F", "I", "N", "D", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-# Nei test il nome del metodo descrive gia' il comportamento verificato:
-# imporre anche una docstring aggiungerebbe solo rumore.
+# In the tests the method name already describes the behaviour being checked:
+# also demanding a docstring would add nothing but noise.
 "tests/**" = ["D102", "D103"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.pyright]
+# Pylance, the VS Code extension, is the closed-source build of this very same
+# analysis engine: keeping the configuration here means the editor and the
+# command line report exactly the same problems.
+include = ["src", "tests"]
+pythonVersion = "3.12"
+
+# Pyright must analyse the code against the same libraries the program sees,
+# otherwise it would not find numpy, cv2 and the other dependencies.
+venvPath = "."
+venv = ".venv"
+
+# "strict" is the most severe level: on top of checking the declared types, it
+# demands that none is left unknown. On a fully annotated codebase like this one
+# the code already satisfies it, so the lower level ("standard", Pylance's
+# default) would let defects through for nothing.
+typeCheckingMode = "strict"
+
+# The project's only suppressions are the two `rembg` import lines, since it
+# ships no type annotations. Reporting the unnecessary ones stops them from
+# lingering after the reason for them has gone away.
+reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

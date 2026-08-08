@@ -1,139 +1,134 @@
-"""Test della fase di resa a penna."""
+"""Tests for the pen rendering step."""
 
 import numpy as np
 
-from gatto.config import PenSketchConfig
-from gatto.domain import RGBAImage
-from gatto.steps.pen_sketch import PenSketchRenderer
+from pixel.domain import RGBAImage
+from pixel.steps.pen_sketch import PenSketchConfig, PenSketchStep
 
-# Il tratteggio va disattivato quando si verifica il solo comportamento del
-# tratto, altrimenti aggiungerebbe linee non prodotte da XDoG.
-SENZA_TRATTEGGIO = PenSketchConfig(enable_hatching=False)
+# Hatching must be turned off when checking the behaviour of the stroke alone,
+# otherwise it would add lines XDoG did not produce.
+WITHOUT_HATCHING = PenSketchConfig(hatching=False)
 
 
-def immagine_grigia(livello: int, lato: int = 64) -> RGBAImage:
-    """Crea un'immagine quadrata di un solo livello di grigio, opaca."""
-    data = np.zeros((lato, lato, 4), dtype=np.uint8)
-    data[:, :, :3] = livello
+def grey_square(level: int, side: int = 64) -> RGBAImage:
+    """Create an opaque square image of a single grey level."""
+    data = np.zeros((side, side, 4), dtype=np.uint8)
+    data[:, :, :3] = level
     data[:, :, 3] = 255
     return RGBAImage(data)
 
 
-def immagine_con_bordo(lato: int = 64) -> RGBAImage:
-    """Crea un'immagine divisa a meta': sinistra chiara, destra scura."""
-    data = np.zeros((lato, lato, 4), dtype=np.uint8)
-    data[:, : lato // 2, :3] = 230
-    data[:, lato // 2 :, :3] = 25
+def image_with_an_edge(side: int = 64) -> RGBAImage:
+    """Create an image split in half: light on the left, dark on the right."""
+    data = np.zeros((side, side, 4), dtype=np.uint8)
+    data[:, : side // 2, :3] = 230
+    data[:, side // 2 :, :3] = 25
     data[:, :, 3] = 255
     return RGBAImage(data)
 
 
-class TestSuperficiUniformi:
-    """Dove non c'e' nulla da disegnare, il foglio deve restare bianco."""
+class TestUniformSurfaces:
+    """Where there is nothing to draw, the sheet must stay white."""
 
-    def test_una_tinta_unita_non_produce_inchiostro(self) -> None:
-        risultato = PenSketchRenderer(SENZA_TRATTEGGIO).apply(immagine_grigia(140))
+    def test_a_solid_colour_produces_no_ink(self) -> None:
+        result = PenSketchStep(WITHOUT_HATCHING).apply(grey_square(140))
 
-        assert np.all(risultato.rgb == 255)
+        assert np.all(result.rgb == 255)
 
-    def test_anche_una_tinta_unita_scura_resta_bianca(self) -> None:
-        # Verifica che il tono di base non venga confuso con un contorno: e' la
-        # differenza tra un disegno a linee e una silhouette annerita.
-        risultato = PenSketchRenderer(SENZA_TRATTEGGIO).apply(immagine_grigia(20))
+    def test_even_a_dark_solid_colour_stays_white(self) -> None:
+        # Checks that the base tone is not mistaken for a contour: that is the
+        # difference between a line drawing and a blackened silhouette.
+        result = PenSketchStep(WITHOUT_HATCHING).apply(grey_square(20))
 
-        assert np.all(risultato.rgb == 255)
-
-
-class TestContorni:
-    """Un bordo netto deve diventare un tratto di penna."""
-
-    def test_un_bordo_produce_inchiostro(self) -> None:
-        risultato = PenSketchRenderer(SENZA_TRATTEGGIO).apply(immagine_con_bordo())
-
-        assert risultato.rgb.min() < 128
-
-    def test_l_inchiostro_si_concentra_sul_bordo(self) -> None:
-        lato = 64
-        risultato = PenSketchRenderer(SENZA_TRATTEGGIO).apply(immagine_con_bordo(lato))
-
-        grigio = risultato.rgb[:, :, 0]
-        # Fascia stretta attorno alla linea di separazione.
-        sul_bordo = grigio[:, lato // 2 - 3 : lato // 2 + 3]
-        # Zona lontana dal bordo, dove il colore e' uniforme.
-        lontano = grigio[:, : lato // 4]
-
-        assert sul_bordo.min() < lontano.min()
-
-    def test_una_soglia_piu_alta_lascia_piu_bianco(self) -> None:
-        immagine = immagine_con_bordo()
-
-        rado = PenSketchRenderer(
-            PenSketchConfig(ink_threshold=0.85, enable_hatching=False)
-        ).apply(immagine)
-        fitto = PenSketchRenderer(
-            PenSketchConfig(ink_threshold=0.25, enable_hatching=False)
-        ).apply(immagine)
-
-        assert rado.rgb.mean() > fitto.rgb.mean()
+        assert np.all(result.rgb == 255)
 
 
-class TestTratteggio:
-    """Il tratteggio deve scurire le ombre e solo quelle."""
+class TestContours:
+    """A crisp edge must become a pen stroke."""
 
-    def test_il_tratteggio_scurisce_una_zona_in_ombra(self) -> None:
-        # Grigio scuro uniforme: senza tratteggio resterebbe foglio bianco.
-        immagine = immagine_grigia(20)
+    def test_an_edge_produces_ink(self) -> None:
+        result = PenSketchStep(WITHOUT_HATCHING).apply(image_with_an_edge())
 
-        senza = PenSketchRenderer(SENZA_TRATTEGGIO).apply(immagine)
-        con = PenSketchRenderer(PenSketchConfig(enable_hatching=True)).apply(immagine)
+        assert result.rgb.min() < 128
 
-        assert con.rgb.mean() < senza.rgb.mean()
+    def test_the_ink_gathers_on_the_edge(self) -> None:
+        side = 64
+        result = PenSketchStep(WITHOUT_HATCHING).apply(image_with_an_edge(side))
 
-    def test_il_tratteggio_non_tocca_le_zone_chiare(self) -> None:
-        # Ben sopra la soglia d'ombra predefinita (95).
-        immagine = immagine_grigia(240)
+        grey = result.rgb[:, :, 0]
+        # A narrow band around the dividing line.
+        on_the_edge = grey[:, side // 2 - 3 : side // 2 + 3]
+        # An area far from the edge, where the colour is uniform.
+        far_away = grey[:, : side // 4]
 
-        risultato = PenSketchRenderer(PenSketchConfig(enable_hatching=True)).apply(
-            immagine
-        )
+        assert on_the_edge.min() < far_away.min()
 
-        assert np.all(risultato.rgb == 255)
+    def test_a_higher_threshold_leaves_more_white(self) -> None:
+        image = image_with_an_edge()
 
-    def test_il_tratteggio_lascia_spazi_bianchi_tra_le_linee(self) -> None:
-        # Un tratteggio e' fatto di linee separate: se annerisse tutto sarebbe
-        # una campitura piena, non un disegno a penna.
-        risultato = PenSketchRenderer(PenSketchConfig(enable_hatching=True)).apply(
-            immagine_grigia(10)
-        )
+        sparse = PenSketchStep(
+            PenSketchConfig(ink_threshold=0.85, hatching=False)
+        ).apply(image)
+        dense = PenSketchStep(
+            PenSketchConfig(ink_threshold=0.25, hatching=False)
+        ).apply(image)
 
-        grigio = risultato.rgb[:, :, 0]
-        assert grigio.max() == 255
-        assert grigio.min() < 255
+        assert sparse.rgb.mean() > dense.rgb.mean()
 
 
-class TestInvarianti:
-    """Proprieta' che la fase deve rispettare in ogni caso."""
+class TestHatching:
+    """Hatching must darken the shadows, and only those."""
 
-    def test_l_alfa_resta_invariato(self) -> None:
+    def test_hatching_darkens_a_shadowed_area(self) -> None:
+        # A uniform dark grey: without hatching it would stay a white sheet.
+        image = grey_square(20)
+
+        without = PenSketchStep(WITHOUT_HATCHING).apply(image)
+        with_hatching = PenSketchStep(PenSketchConfig(hatching=True)).apply(image)
+
+        assert with_hatching.rgb.mean() < without.rgb.mean()
+
+    def test_hatching_does_not_touch_the_light_areas(self) -> None:
+        # Well above the default shadow threshold (95).
+        image = grey_square(240)
+
+        result = PenSketchStep(PenSketchConfig(hatching=True)).apply(image)
+
+        assert np.all(result.rgb == 255)
+
+    def test_hatching_leaves_white_gaps_between_the_lines(self) -> None:
+        # Hatching is made of separate lines: if it blackened everything it would
+        # be a solid fill, not a pen drawing.
+        result = PenSketchStep(PenSketchConfig(hatching=True)).apply(grey_square(10))
+
+        grey = result.rgb[:, :, 0]
+        assert grey.max() == 255
+        assert grey.min() < 255
+
+
+class TestInvariants:
+    """Properties the step must honour in every case."""
+
+    def test_the_alpha_is_unchanged(self) -> None:
         data = np.zeros((32, 32, 4), dtype=np.uint8)
         data[:, :, :3] = 120
         data[:, :, 3] = 42
-        immagine = RGBAImage(data)
+        image = RGBAImage(data)
 
-        risultato = PenSketchRenderer(PenSketchConfig()).apply(immagine)
+        result = PenSketchStep(PenSketchConfig()).apply(image)
 
-        assert np.all(risultato.alpha == 42)
+        assert np.all(result.alpha == 42)
 
-    def test_il_risultato_e_monocromatico(self) -> None:
-        risultato = PenSketchRenderer(PenSketchConfig()).apply(immagine_con_bordo())
+    def test_the_result_is_monochrome(self) -> None:
+        result = PenSketchStep(PenSketchConfig()).apply(image_with_an_edge())
 
-        rgb = risultato.rgb
+        rgb = result.rgb
         assert np.array_equal(rgb[:, :, 0], rgb[:, :, 1])
         assert np.array_equal(rgb[:, :, 1], rgb[:, :, 2])
 
-    def test_le_dimensioni_restano_invariate(self) -> None:
-        immagine = immagine_con_bordo(lato=48)
+    def test_the_dimensions_are_unchanged(self) -> None:
+        image = image_with_an_edge(side=48)
 
-        risultato = PenSketchRenderer(PenSketchConfig()).apply(immagine)
+        result = PenSketchStep(PenSketchConfig()).apply(image)
 
-        assert (risultato.height, risultato.width) == (48, 48)
+        assert (result.height, result.width) == (48, 48)

@@ -1,168 +1,188 @@
-"""Test dell'orchestrazione delle fasi."""
+"""Tests for the orchestration of the steps."""
 
 from pathlib import Path
 
 import numpy as np
 
-from gatto.config import PipelineConfig
-from gatto.domain import RGBAImage
-from gatto.pipeline import CatSketchPipeline, PipelineResult, StepResult, save_results
+from pixel import build_pipeline
+from pixel.cli import DEFAULT_PIPELINE
+from pixel.domain import RGBAImage
+from pixel.pipeline import ImagePipeline, PipelineResult, StepResult, save_results
 
 
-class FaseFinta:
-    """Una fase di prova che schiarisce l'immagine di una quantita' fissa.
+class FakeStep:
+    """A test step that brightens the image by a fixed amount.
 
-    Serve a verificare l'orchestrazione senza far girare le reti neurali: la
-    pipeline non deve sapere cosa fanno le fasi, quindi puo' essere provata con
-    fasi qualsiasi.
+    It exists to check the orchestration without running the neural networks:
+    the pipeline does not need to know what the steps do, so it can be tested
+    with any steps at all.
     """
 
-    def __init__(self, nome: str, incremento: int) -> None:
-        """Memorizza il nome della fase e di quanto deve schiarire."""
-        self._nome = nome
-        self._incremento = incremento
+    def __init__(self, name: str, increment: int) -> None:
+        """Store the step's name and how much it should brighten."""
+        self._name = name
+        self._increment = increment
 
     @property
     def name(self) -> str:
-        """Nome della fase finta."""
-        return self._nome
+        """Name of the fake step."""
+        return self._name
 
     def apply(self, image: RGBAImage) -> RGBAImage:
-        """Somma l'incremento a ogni canale di colore."""
-        schiarita = np.clip(
-            image.rgb.astype(np.int16) + self._incremento, 0, 255
+        """Add the increment to every colour channel."""
+        brightened = np.clip(
+            image.rgb.astype(np.int16) + self._increment, 0, 255
         ).astype(np.uint8)
-        return image.with_rgb(schiarita)
+        return image.with_rgb(brightened)
 
 
-def immagine_nera(lato: int = 4) -> RGBAImage:
-    """Crea un'immagine nera opaca."""
-    data = np.zeros((lato, lato, 4), dtype=np.uint8)
+def black_image(side: int = 4) -> RGBAImage:
+    """Create an opaque black image."""
+    data = np.zeros((side, side, 4), dtype=np.uint8)
     data[:, :, 3] = 255
     return RGBAImage(data)
 
 
-class TestComposizioneDelleFasi:
-    """La pipeline deve applicare le fasi nell'ordine giusto."""
+class TestStepComposition:
+    """The pipeline must apply the steps in the right order."""
 
-    def test_le_fasi_vengono_applicate_in_sequenza(self) -> None:
-        pipeline = CatSketchPipeline(
-            PipelineConfig(), steps=(FaseFinta("prima", 10), FaseFinta("seconda", 5))
-        )
+    def test_the_steps_are_applied_in_sequence(self) -> None:
+        pipeline = ImagePipeline((FakeStep("first", 10), FakeStep("second", 5)))
 
-        risultato = pipeline.run(immagine_nera())
+        result = pipeline.run(black_image())
 
-        assert np.all(risultato.final_image.rgb == 15)
+        assert np.all(result.final_image.rgb == 15)
 
-    def test_ogni_fase_lascia_il_proprio_risultato_intermedio(self) -> None:
-        pipeline = CatSketchPipeline(
-            PipelineConfig(), steps=(FaseFinta("prima", 10), FaseFinta("seconda", 5))
-        )
+    def test_every_step_leaves_its_own_intermediate_result(self) -> None:
+        pipeline = ImagePipeline((FakeStep("first", 10), FakeStep("second", 5)))
 
-        risultato = pipeline.run(immagine_nera())
+        result = pipeline.run(black_image())
 
-        assert len(risultato.steps) == 2
-        assert np.all(risultato.steps[0].image.rgb == 10)
-        assert np.all(risultato.steps[1].image.rgb == 15)
+        assert len(result.steps) == 2
+        assert np.all(result.steps[0].image.rgb == 10)
+        assert np.all(result.steps[1].image.rgb == 15)
 
-    def test_i_risultati_sono_numerati_a_partire_da_uno(self) -> None:
-        pipeline = CatSketchPipeline(
-            PipelineConfig(), steps=(FaseFinta("prima", 1), FaseFinta("seconda", 1))
-        )
+    def test_the_results_are_numbered_from_one(self) -> None:
+        pipeline = ImagePipeline((FakeStep("first", 1), FakeStep("second", 1)))
 
-        risultato = pipeline.run(immagine_nera())
+        result = pipeline.run(black_image())
 
-        assert [passo.order for passo in risultato.steps] == [1, 2]
+        assert [step.order for step in result.steps] == [1, 2]
 
-    def test_l_immagine_di_partenza_resta_intatta(self) -> None:
-        originale = immagine_nera()
-        pipeline = CatSketchPipeline(PipelineConfig(), steps=(FaseFinta("prima", 50),))
+    def test_the_starting_image_stays_intact(self) -> None:
+        original = black_image()
+        pipeline = ImagePipeline((FakeStep("first", 50),))
 
-        pipeline.run(originale)
+        pipeline.run(original)
 
-        assert np.all(originale.rgb == 0)
+        assert np.all(original.rgb == 0)
 
 
-class TestFasiPredefinite:
-    """La configurazione standard deve produrre le tre fasi richieste, in ordine."""
+class TestDefaultPipeline:
+    """The pipeline the command line offers must be valid."""
 
-    def test_le_tre_fasi_sono_nell_ordine_atteso(self) -> None:
-        pipeline = CatSketchPipeline(PipelineConfig())
+    def test_the_default_pipeline_builds(self) -> None:
+        # It is also the first example the user sees: if it did not work, the
+        # program would not even start with no arguments.
+        pipeline = build_pipeline(DEFAULT_PIPELINE)
 
         assert list(pipeline.iter_step_names()) == [
-            "rimozione-sfondo",
-            "bianco-e-nero",
-            "disegno-a-penna",
+            "remove-background",
+            "grayscale",
+            "pen-sketch",
         ]
 
 
-class TestRisultato:
-    """`PipelineResult` deve esporre correttamente l'immagine finale."""
+class TestProgress:
+    """Whoever runs the pipeline must be able to follow its progress."""
 
-    def test_l_immagine_finale_e_quella_dell_ultima_fase(self) -> None:
-        sorgente = immagine_nera()
-        ultima = FaseFinta("ultima", 99).apply(sorgente)
-        risultato = PipelineResult(
-            source=sorgente,
-            steps=(StepResult(order=1, name="ultima", image=ultima),),
+    def test_the_callback_receives_every_step_in_order(self) -> None:
+        announced: list[tuple[int, str]] = []
+        pipeline = ImagePipeline((FakeStep("first", 1), FakeStep("second", 1)))
+
+        pipeline.run(
+            black_image(),
+            on_step_start=lambda order, name: announced.append((order, name)),
         )
 
-        assert np.all(risultato.final_image.rgb == 99)
+        assert announced == [(1, "first"), (2, "second")]
 
-    def test_senza_fasi_l_immagine_finale_e_la_sorgente(self) -> None:
-        sorgente = immagine_nera()
+    def test_without_a_callback_the_run_proceeds_anyway(self) -> None:
+        pipeline = ImagePipeline((FakeStep("first", 7),))
 
-        risultato = PipelineResult(source=sorgente, steps=())
+        assert np.all(pipeline.run(black_image()).final_image.rgb == 7)
 
-        assert risultato.final_image is sorgente
+    def test_the_length_is_the_number_of_steps(self) -> None:
+        pipeline = ImagePipeline((FakeStep("a", 1), FakeStep("b", 1)))
+
+        assert len(pipeline) == 2
 
 
-class TestSalvataggioDeiRisultati:
-    """La scrittura su disco deve rispettare l'opzione sui file intermedi."""
+class TestResult:
+    """`PipelineResult` must expose the final image correctly."""
 
-    def _risultato_di_prova(self) -> PipelineResult:
-        sorgente = immagine_nera()
+    def test_the_final_image_is_the_last_step_s(self) -> None:
+        source = black_image()
+        last = FakeStep("last", 99).apply(source)
+        result = PipelineResult(
+            source=source,
+            steps=(StepResult(order=1, name="last", image=last),),
+        )
+
+        assert np.all(result.final_image.rgb == 99)
+
+    def test_with_no_steps_the_final_image_is_the_source(self) -> None:
+        source = black_image()
+
+        result = PipelineResult(source=source, steps=())
+
+        assert result.final_image is source
+
+
+class TestSavingTheResults:
+    """Writing to disk must honour the intermediate-files option."""
+
+    def _sample_result(self) -> PipelineResult:
+        source = black_image()
         return PipelineResult(
-            source=sorgente,
+            source=source,
             steps=(
-                StepResult(order=1, name="prima", image=sorgente),
-                StepResult(order=2, name="seconda", image=sorgente),
+                StepResult(order=1, name="first", image=source),
+                StepResult(order=2, name="second", image=source),
             ),
         )
 
-    def test_salva_le_fasi_intermedie_quando_richiesto(self, tmp_path: Path) -> None:
-        percorsi = save_results(
-            result=self._risultato_di_prova(),
+    def test_saves_the_intermediate_steps_when_asked(self, tmp_path: Path) -> None:
+        paths = save_results(
+            result=self._sample_result(),
             output_directory=tmp_path,
-            final_filename="finale.png",
+            final_filename="final.png",
             save_intermediate_steps=True,
         )
 
-        assert len(percorsi) == 3
-        assert (tmp_path / "01_prima.png").is_file()
-        assert (tmp_path / "02_seconda.png").is_file()
-        assert (tmp_path / "finale.png").is_file()
+        assert len(paths) == 3
+        assert (tmp_path / "01_first.png").is_file()
+        assert (tmp_path / "02_second.png").is_file()
+        assert (tmp_path / "final.png").is_file()
 
-    def test_salva_solo_il_finale_quando_non_richiesto(self, tmp_path: Path) -> None:
-        percorsi = save_results(
-            result=self._risultato_di_prova(),
+    def test_saves_only_the_final_one_when_not_asked(self, tmp_path: Path) -> None:
+        paths = save_results(
+            result=self._sample_result(),
             output_directory=tmp_path,
-            final_filename="finale.png",
+            final_filename="final.png",
             save_intermediate_steps=False,
         )
 
-        assert percorsi == [tmp_path / "finale.png"]
-        assert not (tmp_path / "01_prima.png").exists()
+        assert paths == [tmp_path / "final.png"]
+        assert not (tmp_path / "01_first.png").exists()
 
-    def test_i_nomi_intermedi_sono_ordinati_alfabeticamente(
-        self, tmp_path: Path
-    ) -> None:
+    def test_the_intermediate_names_sort_alphabetically(self, tmp_path: Path) -> None:
         save_results(
-            result=self._risultato_di_prova(),
+            result=self._sample_result(),
             output_directory=tmp_path,
-            final_filename="finale.png",
+            final_filename="final.png",
             save_intermediate_steps=True,
         )
 
-        intermedi = sorted(p.name for p in tmp_path.glob("0*.png"))
-        assert intermedi == ["01_prima.png", "02_seconda.png"]
+        intermediate = sorted(p.name for p in tmp_path.glob("0*.png"))
+        assert intermediate == ["01_first.png", "02_second.png"]

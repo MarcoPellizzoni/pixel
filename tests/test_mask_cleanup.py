@@ -1,122 +1,122 @@
-"""Test delle rifiniture applicate alla maschera di ritaglio."""
+"""Tests for the refinements applied to the cut-out mask."""
 
 import numpy as np
 
-from gatto.steps.mask_cleanup import feather_mask_edges, keep_largest_region
+from pixel.steps.mask_cleanup import feather_mask_edges, keep_largest_region
 
 
 class TestKeepLargestRegion:
-    """Deve sopravvivere solo la regione connessa piu' estesa."""
+    """Only the largest connected region must survive."""
 
-    def test_la_macchia_isolata_piu_piccola_viene_eliminata(self) -> None:
+    def test_the_smaller_isolated_blob_is_removed(self) -> None:
         mask = np.zeros((40, 40), dtype=np.uint8)
-        mask[5:25, 5:25] = 255  # soggetto: 400 pixel
-        mask[32:36, 32:36] = 255  # scarto isolato: 16 pixel
+        mask[5:25, 5:25] = 255  # subject: 400 pixels
+        mask[32:36, 32:36] = 255  # isolated leftover: 16 pixels
 
-        risultato = keep_largest_region(mask, alpha_threshold=8)
+        result = keep_largest_region(mask, alpha_threshold=8)
 
-        assert np.all(risultato[5:25, 5:25] == 255)
-        assert np.all(risultato[32:36, 32:36] == 0)
+        assert np.all(result[5:25, 5:25] == 255)
+        assert np.all(result[32:36, 32:36] == 0)
 
-    def test_un_appendice_sottile_collegata_sopravvive(self) -> None:
-        # Riproduce il caso dei baffi: un tratto sottile ma attaccato al corpo.
+    def test_a_thin_connected_appendage_survives(self) -> None:
+        # This reproduces the whiskers case: a thin stroke, but attached to the body.
         mask = np.zeros((40, 40), dtype=np.uint8)
         mask[10:30, 10:30] = 255
         mask[19, 30:38] = 255
 
-        risultato = keep_largest_region(mask, alpha_threshold=8)
+        result = keep_largest_region(mask, alpha_threshold=8)
 
-        assert np.all(risultato[19, 30:38] == 255)
+        assert np.all(result[19, 30:38] == 255)
 
-    def test_un_appendice_semitrasparente_collegata_sopravvive(self) -> None:
-        # I baffi hanno un'opacita' debole: la soglia bassa deve considerarli
-        # comunque parte del corpo, invece di staccarli e cancellarli.
+    def test_a_semi_transparent_connected_appendage_survives(self) -> None:
+        # Whiskers are only faintly opaque: the low threshold must still count
+        # them as part of the body, instead of detaching and deleting them.
         mask = np.zeros((40, 40), dtype=np.uint8)
         mask[10:30, 10:30] = 255
         mask[19, 30:38] = 20
 
-        risultato = keep_largest_region(mask, alpha_threshold=8)
+        result = keep_largest_region(mask, alpha_threshold=8)
 
-        assert np.all(risultato[19, 30:38] == 20)
+        assert np.all(result[19, 30:38] == 20)
 
-    def test_una_soglia_troppo_alta_stacca_le_parti_deboli(self) -> None:
-        # Documenta il motivo per cui la soglia va tenuta bassa.
+    def test_too_high_a_threshold_detaches_the_faint_parts(self) -> None:
+        # Documents why the threshold has to be kept low.
         mask = np.zeros((40, 40), dtype=np.uint8)
         mask[10:30, 10:30] = 255
         mask[19, 30:38] = 20
 
-        risultato = keep_largest_region(mask, alpha_threshold=100)
+        result = keep_largest_region(mask, alpha_threshold=100)
 
-        assert np.all(risultato[19, 30:38] == 0)
+        assert np.all(result[19, 30:38] == 0)
 
-    def test_i_valori_sfumati_dei_pixel_superstiti_non_cambiano(self) -> None:
+    def test_the_soft_values_of_surviving_pixels_do_not_change(self) -> None:
         mask = np.zeros((20, 20), dtype=np.uint8)
         mask[5:15, 5:15] = 200
         mask[5, 5] = 37
 
-        risultato = keep_largest_region(mask, alpha_threshold=8)
+        result = keep_largest_region(mask, alpha_threshold=8)
 
-        assert risultato[5, 5] == 37
-        assert risultato[10, 10] == 200
+        assert result[5, 5] == 37
+        assert result[10, 10] == 200
 
-    def test_una_maschera_vuota_resta_vuota(self) -> None:
+    def test_an_empty_mask_stays_empty(self) -> None:
         mask = np.zeros((10, 10), dtype=np.uint8)
 
-        risultato = keep_largest_region(mask, alpha_threshold=8)
+        result = keep_largest_region(mask, alpha_threshold=8)
 
-        assert np.all(risultato == 0)
+        assert np.all(result == 0)
 
-    def test_una_maschera_piena_resta_piena(self) -> None:
+    def test_a_full_mask_stays_full(self) -> None:
         mask = np.full((10, 10), 255, dtype=np.uint8)
 
-        risultato = keep_largest_region(mask, alpha_threshold=8)
+        result = keep_largest_region(mask, alpha_threshold=8)
 
-        assert np.all(risultato == 255)
+        assert np.all(result == 255)
 
-    def test_le_regioni_collegate_in_diagonale_contano_come_una_sola(self) -> None:
+    def test_diagonally_connected_regions_count_as_one(self) -> None:
         mask = np.zeros((20, 20), dtype=np.uint8)
         mask[2:10, 2:10] = 255
-        # Tocca la precedente solo per uno spigolo.
+        # Touches the previous one only at a corner.
         mask[10:18, 10:18] = 255
 
-        risultato = keep_largest_region(mask, alpha_threshold=8)
+        result = keep_largest_region(mask, alpha_threshold=8)
 
-        assert np.all(risultato[2:10, 2:10] == 255)
-        assert np.all(risultato[10:18, 10:18] == 255)
+        assert np.all(result[2:10, 2:10] == 255)
+        assert np.all(result[10:18, 10:18] == 255)
 
 
 class TestFeatherMaskEdges:
-    """La sfumatura deve ammorbidire il bordo senza spostarlo."""
+    """Feathering must soften the edge without moving it."""
 
-    def test_raggio_zero_lascia_la_maschera_invariata(self) -> None:
+    def test_a_zero_radius_leaves_the_mask_unchanged(self) -> None:
         mask = np.zeros((20, 20), dtype=np.uint8)
         mask[5:15, 5:15] = 255
 
-        risultato = feather_mask_edges(mask, radius=0)
+        result = feather_mask_edges(mask, radius=0)
 
-        assert np.array_equal(risultato, mask)
+        assert np.array_equal(result, mask)
 
-    def test_la_sfumatura_crea_valori_intermedi_sul_bordo(self) -> None:
+    def test_feathering_creates_intermediate_values_at_the_edge(self) -> None:
         mask = np.zeros((20, 20), dtype=np.uint8)
         mask[5:15, 5:15] = 255
 
-        risultato = feather_mask_edges(mask, radius=2)
+        result = feather_mask_edges(mask, radius=2)
 
-        intermedi = (risultato > 0) & (risultato < 255)
-        assert intermedi.any()
+        intermediate = (result > 0) & (result < 255)
+        assert intermediate.any()
 
-    def test_il_centro_e_l_esterno_restano_saturi(self) -> None:
+    def test_the_centre_and_the_outside_stay_saturated(self) -> None:
         mask = np.zeros((30, 30), dtype=np.uint8)
         mask[10:20, 10:20] = 255
 
-        risultato = feather_mask_edges(mask, radius=1)
+        result = feather_mask_edges(mask, radius=1)
 
-        assert risultato[15, 15] == 255
-        assert risultato[0, 0] == 0
+        assert result[15, 15] == 255
+        assert result[0, 0] == 0
 
-    def test_le_dimensioni_restano_invariate(self) -> None:
+    def test_the_dimensions_are_unchanged(self) -> None:
         mask = np.zeros((13, 17), dtype=np.uint8)
 
-        risultato = feather_mask_edges(mask, radius=3)
+        result = feather_mask_edges(mask, radius=3)
 
-        assert risultato.shape == (13, 17)
+        assert result.shape == (13, 17)

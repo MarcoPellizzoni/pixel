@@ -9,9 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-# Cache degli strumenti di sviluppo
+# Development tool caches
 .pytest_cache/
 .ruff_cache/
 
-# Immagini prodotte dall'elaborazione: si rigenerano con `uv run gatto`
+# Images produced by the processing: regenerate them with `uv run pixel run`
 output/

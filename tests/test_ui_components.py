@@ -106,6 +106,7 @@ def build_toolbar(
     on_toggle_pipeline: Callable[[], None] = lambda: None,
     on_save_session: Callable[[], None] = lambda: None,
     on_open_session: Callable[[], None] = lambda: None,
+    on_export_path: Callable[[], None] = lambda: None,
 ) -> EditorToolbar:
     """Build a toolbar, wiring only the callbacks a test cares about."""
     return EditorToolbar(
@@ -119,6 +120,7 @@ def build_toolbar(
         on_toggle_pipeline=on_toggle_pipeline,
         on_save_session=on_save_session,
         on_open_session=on_open_session,
+        on_export_path=on_export_path,
     )
 
 

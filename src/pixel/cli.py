@@ -21,10 +21,12 @@ from typing import Annotated
 
 import typer
 
+from pixel import paths
 from pixel.dsl import format_pipeline, parse_pipeline
 from pixel.errors import PipelineDefinitionError
 from pixel.image_io import STDIO_PATH, load_image, save_image
 from pixel.params import describe_parameters
+from pixel.paths import TraceSource
 from pixel.pipeline import ImagePipeline, save_results
 from pixel.registry import build_steps, get_definition, list_definitions
 
@@ -155,6 +157,84 @@ def run(
     typer.secho("Done. Files written:", fg=typer.colors.GREEN, err=True)
     for path in written_paths:
         _report(f"  - {path}")
+
+
+@application.command()
+def trace(
+    input_path: Annotated[
+        Path,
+        typer.Argument(metavar="IMAGE", help="Image to trace."),
+    ],
+    output_path: Annotated[
+        Path,
+        typer.Argument(metavar="OUTPUT.SVG", help="Where to write the SVG."),
+    ],
+    pipeline_text: Annotated[
+        str,
+        typer.Option(
+            "--pipeline",
+            "-p",
+            help=(
+                "Steps to run before tracing, in the usual syntax. "
+                'Typically "remove-background", so the subject is traced.'
+            ),
+        ),
+    ] = "",
+    source: Annotated[
+        TraceSource,
+        typer.Option("--source", help="Which part of the image marks the shape."),
+    ] = TraceSource.ALPHA,
+    tolerance: Annotated[
+        float,
+        typer.Option("--tolerance", help="How far the path may stray, in pixels."),
+    ] = 2.0,
+    smoothness: Annotated[
+        float,
+        typer.Option("--smoothness", help="How rounded the corners are; 0 keeps them sharp."),
+    ] = 1.0 / 3.0,
+    threshold: Annotated[
+        int,
+        typer.Option("--threshold", help="Level separating inside from outside."),
+    ] = 128,
+) -> None:
+    """Trace an image's outline and write it out as an SVG path."""
+    try:
+        source_image = load_image(input_path)
+    except FileNotFoundError as error:
+        typer.secho(str(error), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from error
+
+    if pipeline_text:
+        try:
+            prepared = ImagePipeline(build_steps(parse_pipeline(pipeline_text)))
+            source_image = prepared.run(source_image).final_image
+        except PipelineDefinitionError as error:
+            typer.secho(str(error), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from error
+
+    report = paths.trace(
+        source_image,
+        config=paths.TraceConfig(source=source, threshold=threshold),
+        style=paths.PathStyle(tolerance=tolerance, smoothness=smoothness),
+    )
+
+    if report.paths.is_empty:
+        typer.secho(
+            "Nothing to trace: no shape was found at that threshold.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(paths.to_svg(report.paths))
+
+    _report(
+        f"Traced {report.outlines_found} outline(s): "
+        f"{report.points_before} points reduced to {report.points_after} "
+        f"({report.reduction:.0%} fewer)."
+    )
+    typer.secho(f"Written to {output_path}", fg=typer.colors.GREEN, err=True)
 
 
 @application.command()

@@ -156,7 +156,7 @@ is visible for what it is.
 | Colour | `grayscale` `sepia` `invert` `saturation` `posterize` |
 | Tone | `brightness-contrast` `gamma` `auto-contrast` `threshold` |
 | Filters | `blur` `sharpen` `denoise` `edges` |
-| Segmentation | `remove-background` |
+| Segmentation | `remove-background` `trace` |
 | Artistic | `pen-sketch` `pencil-sketch` `cartoon` `vignette` |
 
 A few useful combinations:
@@ -173,7 +173,38 @@ A few useful combinations:
 
 # A square thumbnail
 "resize:width=400,height=400,fit=cover | crop:width=400,height=400"
+
+# The subject's outline, as a path
+"remove-background | trace:tolerance=3"
 ```
+
+## Tracing a path
+
+`trace` finds the outline of the shape in a picture and draws it as a smooth
+Bézier curve — the same thing an image editor's Path tool produces from a
+selection. Put it after `remove-background` and it traces the cut-out subject.
+
+The path can also be written out as a vector file, which Illustrator, Inkscape,
+Figma and a browser all read:
+
+```bash
+uv run pixel trace photo.jpg outline.svg -p "remove-background"
+uv run pixel trace scan.png letters.svg --source dark --tolerance 1
+```
+
+In the editor the same export sits in the sessions menu, under **Export path as
+SVG…**, and traces the picture as it currently stands.
+
+Two controls shape the result, and they are the ones an editor offers:
+
+- **tolerance** — how far the path may stray from the pixels. On the cat's
+  cut-out, 0.5 keeps 395 points and follows every strand of fur; 2.0 keeps 99;
+  6.0 keeps 48 and gives clean sweeping curves.
+- **smoothness** — how rounded the corners are. 0 leaves a sharp-cornered
+  polygon; around a third gives the flowing look of a drawn curve.
+
+Holes are traced too and marked as such, so the inside of a letter O comes out
+empty rather than filled.
 
 ## Use as a library
 
@@ -217,7 +248,15 @@ src/pixel/
 ├── params.py        Converts textual parameters into typed configurations
 ├── registry.py      The catalogue: public name → step + configuration
 ├── errors.py        The errors a user can cause by writing a bad pipeline
-├── cli.py           The run / steps / describe commands
+├── cli.py           The run / trace / steps / describe commands
+├── paths/           Tracing an image into vector paths
+│   ├── geometry.py      what a path is made of
+│   ├── finder.py        the border search, and what counts as inside
+│   ├── simplify.py      Douglas-Peucker, which is the tolerance control
+│   ├── curves.py        polygons into Bezier curves
+│   ├── raster.py        drawing paths back onto an image
+│   ├── svg.py           writing paths out as SVG
+│   └── tracer.py        the three stages in order
 ├── steps/
     ├── base.py          The `ProcessingStep` protocol shared by all of them
     ├── geometry.py      shape and size
@@ -292,7 +331,7 @@ checking, the same engine as Pylance).
 ## Development
 
 ```bash
-uv run pytest        # 496 tests
+uv run pytest        # 543 tests
 uv run ruff check .  # linting and import sorting
 uv run pyright       # static type checking
 ```

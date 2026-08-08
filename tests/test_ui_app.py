@@ -23,6 +23,8 @@ import pytest
 from conftest import solid_image
 from test_ui_components import find_controls, fire
 
+from pixel import paths
+from pixel.domain import RGBAImage
 from pixel.dsl import parse_pipeline
 from pixel.image_io import save_image
 from pixel.ui import sessions, theme, workspace
@@ -915,6 +917,67 @@ class TestChangesDoNotOverlap:
         assert len(app.session.applied) == len(
             parse_pipeline(app.session.pipeline_text)
         )
+
+
+class TestExportingThePath:
+    """Tracing the picture and writing the path out."""
+
+    def test_it_writes_an_svg(self, photo_on_disk: Path, tmp_path: Path) -> None:
+        app, _ = build_app(photo_on_disk)
+        destination = tmp_path / "shape.svg"
+
+        app.export_path_to(destination)
+
+        assert destination.is_file()
+        assert destination.read_text().startswith("<?xml")
+
+    def test_the_path_follows_what_is_on_screen(
+        self, photo_on_disk: Path, tmp_path: Path
+    ) -> None:
+        # The picture traced is the edited one, so putting remove-background in
+        # the pipeline first is what gets a path around the subject.
+        app, _ = build_app(photo_on_disk)
+        app.apply_step("invert")
+        destination = tmp_path / "shape.svg"
+
+        app.export_path_to(destination)
+
+        assert app.session is not None
+        traced = paths.trace(app.session.current)
+        assert str(traced.paths.width) in destination.read_text()
+
+    def test_exporting_without_an_image_is_refused_politely(
+        self, tmp_path: Path
+    ) -> None:
+        app, page = build_app()
+
+        app.export_path_to(tmp_path / "shape.svg")
+
+        assert page.dialogs
+        assert not (tmp_path / "shape.svg").exists()
+
+    def test_a_picture_with_no_shape_in_it_is_reported(self, tmp_path: Path) -> None:
+        # A fully transparent image has no border to follow.
+        blank = tmp_path / "blank.png"
+        save_image(
+            RGBAImage(np.zeros((30, 30, 4), dtype=np.uint8)), blank
+        )
+        app, page = build_app(blank)
+
+        app.export_path_to(tmp_path / "shape.svg")
+
+        assert page.dialogs
+        assert not (tmp_path / "shape.svg").exists()
+
+    def test_somewhere_unwritable_is_reported(self, photo_on_disk: Path, tmp_path: Path) -> None:
+        blocked = tmp_path / "file"
+        blocked.write_text("in the way")
+        app, page = build_app(photo_on_disk)
+        messages_before = len(page.dialogs)
+
+        app.export_path_to(blocked / "shape.svg")
+
+        assert len(page.dialogs) > messages_before
 
 
 class TestSaveName:

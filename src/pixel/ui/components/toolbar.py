@@ -34,6 +34,7 @@ class EditorToolbar:
         on_toggle_pipeline: Callable[[], None],
         on_save_session: Callable[[], None],
         on_open_session: Callable[[], None],
+        on_export_path: Callable[[], None],
     ) -> None:
         """Build the toolbar with every action disabled but "open".
 
@@ -48,6 +49,7 @@ class EditorToolbar:
             on_toggle_pipeline: called to show or hide the pipeline panel.
             on_save_session: called to write the pipeline to a named file.
             on_open_session: called to load a pipeline from a named file.
+            on_export_path: called to write the traced path out as an SVG.
         """
         self._open_button = ft.Button(
             content="Open",
@@ -96,6 +98,12 @@ class EditorToolbar:
                     content="Open session...",
                     icon=ft.Icons.BOOKMARK_OUTLINED,
                     on_click=lambda _: on_open_session(),
+                ),
+                ft.PopupMenuItem(),
+                ft.PopupMenuItem(
+                    content="Export path as SVG...",
+                    icon=ft.Icons.POLYLINE_OUTLINED,
+                    on_click=lambda _: on_export_path(),
                 ),
             ],
         )

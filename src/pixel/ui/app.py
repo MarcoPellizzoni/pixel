@@ -25,6 +25,7 @@ from pathlib import Path
 
 import flet as ft
 
+from pixel import paths
 from pixel.dsl import StepInvocation, parse_pipeline
 from pixel.errors import PipelineDefinitionError
 from pixel.image_io import load_image, save_image
@@ -45,6 +46,9 @@ IMAGE_EXTENSIONS: list[str] = ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff
 # Default name suggested when saving. PNG keeps the transparency a cut-out leaves
 # behind, which a JPEG would silently flatten.
 DEFAULT_SAVE_NAME: str = "edited.png"
+
+# Extension offered when exporting a traced path.
+SVG_EXTENSION: str = "svg"
 
 # How long a message stays on screen, in milliseconds.
 MESSAGE_DURATION: int = 4000
@@ -105,6 +109,7 @@ class ImageEditorApp:
             on_toggle_pipeline=self.toggle_pipeline,
             on_save_session=self.save_session,
             on_open_session=self.open_session,
+            on_export_path=self.export_path,
         )
         self._library = StepLibraryPanel(
             on_apply_now=self.apply_step,
@@ -308,6 +313,18 @@ class ImageEditorApp:
         """Ask for a session file and reapply the steps it holds."""
         self._page.run_task(self._choose_and_open_session)
 
+    def export_path(self) -> None:
+        """Ask where to write the traced path, and write it as an SVG."""
+        self._page.run_task(self._choose_and_export_path)
+
+    def export_path_to(self, path: Path) -> None:
+        """Trace the current picture and write the path to a file.
+
+        Args:
+            path: the SVG file to write.
+        """
+        self._page.run_task(self._export_path_to, path)
+
     def save_session_to(self, path: Path) -> None:
         """Write the pipeline to a session file, without asking where.
 
@@ -467,6 +484,67 @@ class ImageEditorApp:
             return
 
         await self._change_pipeline(lambda session: _replay(session, invocations))
+
+    # ------------------------------------------------------------------
+    # Exporting the traced path
+    # ------------------------------------------------------------------
+
+    async def _choose_and_export_path(self) -> None:
+        """Show the save dialog and write the traced path where asked."""
+        if self._session is None:
+            self._notify("Open an image before tracing it", is_error=True)
+            return
+
+        stem = self._current_path.stem if self._current_path else "path"
+        destination = await self._file_picker.save_file(
+            dialog_title="Export path as SVG",
+            file_name=f"{stem}.svg",
+            allowed_extensions=[SVG_EXTENSION],
+        )
+        if destination is None:
+            return
+
+        await self._export_path_to(Path(destination))
+
+    async def _export_path_to(self, path: Path) -> None:
+        """Trace the picture as it stands and write the path out.
+
+        The picture traced is the one on screen, at full resolution — so putting
+        `remove-background` in the pipeline first traces the subject, which is
+        the usual way to get a path worth keeping.
+
+        Args:
+            path: the SVG file to write.
+        """
+        session = self._session
+        if session is None:
+            self._notify("Open an image before tracing it", is_error=True)
+            return
+
+        self._toolbar.set_busy(True)
+        try:
+            report = await asyncio.to_thread(paths.trace, session.current)
+        finally:
+            self._toolbar.set_busy(False)
+
+        if report.paths.is_empty:
+            self._notify(
+                "Nothing to trace: no shape was found in this picture",
+                is_error=True,
+            )
+            return
+
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(paths.to_svg(report.paths))
+        except OSError as error:
+            self._notify(f"Could not write the path: {error}", is_error=True)
+            return
+
+        self._notify(
+            f"Path exported to {path.name} "
+            f"({report.outlines_found} outline(s), {report.points_after} points)"
+        )
 
     # ------------------------------------------------------------------
     # Rearranging the window

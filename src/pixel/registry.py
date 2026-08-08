@@ -72,6 +72,7 @@ from pixel.steps.tone import (
     ThresholdConfig,
     ThresholdStep,
 )
+from pixel.steps.trace import TraceStep, TraceStepConfig
 
 
 class StepCategory(StrEnum):
@@ -243,6 +244,13 @@ STEP_DEFINITIONS: tuple[StepDefinition, ...] = (
         summary="Isolate the subject and make the background transparent (neural net).",
         config_class=RemoveBackgroundConfig,
         factory=RemoveBackgroundStep,
+    ),
+    StepDefinition(
+        name="trace",
+        category=StepCategory.SEGMENTATION,
+        summary="Trace the shape's outline as an editable Bezier path.",
+        config_class=TraceStepConfig,
+        factory=TraceStep,
     ),
     # --- Artistic ---
     StepDefinition(

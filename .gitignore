@@ -15,3 +15,5 @@ wheels/
 
 # Images produced by the processing: regenerate them with `uv run pixel run`
 output/
+
+TODO.md
